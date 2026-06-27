@@ -130,6 +130,67 @@ func saveState(path string, st *state) error {
 	return nil
 }
 
+// ReserveRequest describes a reservation. Port 0 means auto-allocate; TTL 0
+// means use the configured default.
+type ReserveRequest struct {
+	Owner   string
+	Purpose string
+	Port    int
+	TTL     time.Duration
+	PID     int
+}
+
+// Reserve allocates a port lane. It sweeps stale leases first, then honors a
+// requested port (error if taken) or allocates the lowest free port in range.
+func (s *Store) Reserve(req ReserveRequest) (Reservation, error) {
+	if req.Owner == "" {
+		return Reservation{}, errors.New("owner is required")
+	}
+	ttl := req.TTL
+	if ttl <= 0 {
+		ttl = s.cfg.DefaultTTL
+	}
+	now := s.now()
+	var result Reservation
+	err := s.withLock(true, func(st *state) (bool, error) {
+		sweep(st, now, s.cfg.PIDAlive)
+		used := make(map[int]Reservation, len(st.Reservations))
+		for _, r := range st.Reservations {
+			used[r.Port] = r
+		}
+		port := req.Port
+		if port != 0 {
+			if existing, taken := used[port]; taken {
+				return false, fmt.Errorf("port %d already reserved by %q", port, existing.Owner)
+			}
+		} else {
+			for p := s.cfg.RangeLow; p <= s.cfg.RangeHigh; p++ {
+				if _, taken := used[p]; !taken {
+					port = p
+					break
+				}
+			}
+			if port == 0 {
+				return false, fmt.Errorf("no free ports in range %d-%d", s.cfg.RangeLow, s.cfg.RangeHigh)
+			}
+		}
+		result = Reservation{
+			Port:      port,
+			Owner:     req.Owner,
+			Purpose:   req.Purpose,
+			PID:       req.PID,
+			CreatedAt: now,
+			ExpiresAt: now.Add(ttl),
+		}
+		st.Reservations = append(st.Reservations, result)
+		return true, nil
+	})
+	if err != nil {
+		return Reservation{}, err
+	}
+	return result, nil
+}
+
 // sweep removes expired and provably-dead-PID reservations in place and
 // returns those it removed. A reservation with PID 0 is judged on lease only.
 func sweep(st *state, now time.Time, alive func(int) bool) []Reservation {
