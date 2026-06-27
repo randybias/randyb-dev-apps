@@ -9,6 +9,21 @@ mutating call.
 
     make build        # -> bin/portwarden
 
+## Install (any dev box)
+
+From a local checkout:
+
+    bash portwarden/install.sh
+
+Remote bootstrap (private repo — uses your gh auth):
+
+    gh api repos/randybias/randyb-dev-apps/contents/portwarden/install.sh \
+      -H "Accept: application/vnd.github.raw" | bash
+
+The installer clones/updates the repo to `~/.local/share/randyb-dev-apps`,
+builds, installs `portwarden` to `~/.local/bin`, and registers it as a
+user-scope MCP server. Override with `PORTWARDEN_SRC_DIR` / `PORTWARDEN_BIN_DIR`.
+
 ## Register as an MCP server (Claude Code)
 
     claude mcp add portwarden -- /absolute/path/to/randyb-dev-apps/bin/portwarden
