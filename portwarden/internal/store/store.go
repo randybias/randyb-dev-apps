@@ -130,6 +130,24 @@ func saveState(path string, st *state) error {
 	return nil
 }
 
+// sweep removes expired and provably-dead-PID reservations in place and
+// returns those it removed. A reservation with PID 0 is judged on lease only.
+func sweep(st *state, now time.Time, alive func(int) bool) []Reservation {
+	kept := make([]Reservation, 0, len(st.Reservations))
+	var removed []Reservation
+	for _, r := range st.Reservations {
+		expired := now.After(r.ExpiresAt)
+		dead := r.PID != 0 && !alive(r.PID)
+		if expired || dead {
+			removed = append(removed, r)
+			continue
+		}
+		kept = append(kept, r)
+	}
+	st.Reservations = kept
+	return removed
+}
+
 // withLock acquires an advisory lock around a load -> fn -> (conditional) save
 // cycle. exclusive=false takes a shared lock and never saves.
 func (s *Store) withLock(exclusive bool, fn func(st *state) (changed bool, err error)) error {
