@@ -191,6 +191,80 @@ func (s *Store) Reserve(req ReserveRequest) (Reservation, error) {
 	return result, nil
 }
 
+// Renew pushes a reservation's expiry to now+ttl. Sweeps first.
+func (s *Store) Renew(port int, ttl time.Duration) (Reservation, error) {
+	if ttl <= 0 {
+		ttl = s.cfg.DefaultTTL
+	}
+	now := s.now()
+	var result Reservation
+	err := s.withLock(true, func(st *state) (bool, error) {
+		sweep(st, now, s.cfg.PIDAlive)
+		for i := range st.Reservations {
+			if st.Reservations[i].Port == port {
+				st.Reservations[i].ExpiresAt = now.Add(ttl)
+				result = st.Reservations[i]
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("no active reservation for port %d", port)
+	})
+	if err != nil {
+		return Reservation{}, err
+	}
+	return result, nil
+}
+
+// Release frees a reservation. Sweeps first.
+func (s *Store) Release(port int) error {
+	now := s.now()
+	return s.withLock(true, func(st *state) (bool, error) {
+		sweep(st, now, s.cfg.PIDAlive)
+		out := make([]Reservation, 0, len(st.Reservations))
+		found := false
+		for _, r := range st.Reservations {
+			if r.Port == port {
+				found = true
+				continue
+			}
+			out = append(out, r)
+		}
+		if !found {
+			return false, fmt.Errorf("no reservation for port %d", port)
+		}
+		st.Reservations = out
+		return true, nil
+	})
+}
+
+// List returns reservations (optionally filtered by owner). Pure read.
+func (s *Store) List(owner string) ([]Reservation, error) {
+	var out []Reservation
+	err := s.withLock(false, func(st *state) (bool, error) {
+		for _, r := range st.Reservations {
+			if owner == "" || r.Owner == owner {
+				out = append(out, r)
+			}
+		}
+		return false, nil
+	})
+	return out, err
+}
+
+// Reap runs the stale-lease sweep on demand and returns what it reclaimed.
+func (s *Store) Reap() ([]Reservation, error) {
+	now := s.now()
+	var removed []Reservation
+	err := s.withLock(true, func(st *state) (bool, error) {
+		removed = sweep(st, now, s.cfg.PIDAlive)
+		return len(removed) > 0, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return removed, nil
+}
+
 // sweep removes expired and provably-dead-PID reservations in place and
 // returns those it removed. A reservation with PID 0 is judged on lease only.
 func sweep(st *state, now time.Time, alive func(int) bool) []Reservation {
