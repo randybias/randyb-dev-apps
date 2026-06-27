@@ -1,0 +1,12 @@
+# Built binaries
+/bin/
+
+# Scratch / temporary work
+scratch/
+
+# Go
+*.test
+*.out
+
+# OS junk
+.DS_Store
