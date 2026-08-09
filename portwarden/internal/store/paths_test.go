@@ -37,6 +37,14 @@ func TestPortRangeFromEnv(t *testing.T) {
 		t.Fatalf("PortRangeFromEnv() = %d-%d, want 30000-31000", low, high)
 	}
 
+	// A range reaching past the TCP maximum would allocate ports nothing can
+	// bind, so it falls back rather than being honored or clamped silently.
+	t.Setenv("PORTWARDEN_PORT_RANGE", "60000-70000")
+	low, high = PortRangeFromEnv(20000, 29999)
+	if low != 20000 || high != 29999 {
+		t.Fatalf("PortRangeFromEnv() above max = %d-%d, want the 20000-29999 fallback", low, high)
+	}
+
 	t.Setenv("PORTWARDEN_PORT_RANGE", "garbage")
 	low, high = PortRangeFromEnv(20000, 29999)
 	if low != 20000 || high != 29999 {

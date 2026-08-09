@@ -17,7 +17,21 @@ func newTestStore(t *testing.T) *Store {
 		DefaultTTL: time.Hour,
 		Now:        func() time.Time { return time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC) },
 		PIDAlive:   func(int) bool { return true },
+		PortFree:   func(int) bool { return true },
 	})
+}
+
+// newTestStoreWithInUse is newTestStore with the given ports reported as
+// physically occupied by the bind probe.
+func newTestStoreWithInUse(t *testing.T, inUse ...int) *Store {
+	t.Helper()
+	s := newTestStore(t)
+	occupied := make(map[int]bool, len(inUse))
+	for _, p := range inUse {
+		occupied[p] = true
+	}
+	s.cfg.PortFree = func(p int) bool { return !occupied[p] }
+	return s
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {

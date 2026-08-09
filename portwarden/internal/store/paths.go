@@ -35,7 +35,7 @@ func PortRangeFromEnv(defLow, defHigh int) (int, int) {
 	}
 	low, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
 	high, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if err1 != nil || err2 != nil || low <= 0 || high < low {
+	if err1 != nil || err2 != nil || low < minPort || high > maxPort || high < low {
 		return defLow, defHigh
 	}
 	return low, high

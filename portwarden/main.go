@@ -21,6 +21,7 @@ type reserveIn struct {
 	Port       int    `json:"port,omitempty" jsonschema:"specific port to request; omit to auto-allocate from the managed range"`
 	TTLSeconds int    `json:"ttl_seconds,omitempty" jsonschema:"lease duration in seconds; omit for the default (30 days)"`
 	PID        int    `json:"pid,omitempty" jsonschema:"PID of the process using the port; lets the lane be reclaimed early if that process dies"`
+	Force      bool   `json:"force,omitempty" jsonschema:"claim a specific port even though a process is already bound to it; for reclaiming a lane whose lease expired while the process kept running. Never overrides another session's active reservation"`
 }
 
 type reservationOut struct {
@@ -85,6 +86,7 @@ func reserveHandler(st *store.Store) func(context.Context, *mcp.CallToolRequest,
 	return func(_ context.Context, _ *mcp.CallToolRequest, in reserveIn) (*mcp.CallToolResult, reservationOut, error) {
 		r, err := st.Reserve(store.ReserveRequest{
 			Owner: in.Owner, Purpose: in.Purpose, Port: in.Port, TTL: ttl(in.TTLSeconds), PID: in.PID,
+			Force: in.Force,
 		})
 		if err != nil {
 			return nil, reservationOut{}, err
@@ -145,7 +147,7 @@ func main() {
 	st := store.New(store.Config{})
 	server := mcp.NewServer(&mcp.Implementation{Name: "portwarden", Version: version}, nil)
 
-	mcp.AddTool(server, &mcp.Tool{Name: "reserve_port", Description: "Reserve a local TCP port (specific or auto-allocated) with a lease."}, reserveHandler(st))
+	mcp.AddTool(server, &mcp.Tool{Name: "reserve_port", Description: "Reserve a local TCP port (specific or auto-allocated) with a lease. Ports already bound by a process are skipped when auto-allocating, and rejected when requested by number unless force is set. A non-forced reservation was bindable when probed, but the probe releases the port before returning, so callers must still handle bind failure."}, reserveHandler(st))
 	mcp.AddTool(server, &mcp.Tool{Name: "renew_port", Description: "Extend the lease on a reserved port (heartbeat)."}, renewHandler(st))
 	mcp.AddTool(server, &mcp.Tool{Name: "release_port", Description: "Release a reserved port."}, releaseHandler(st))
 	mcp.AddTool(server, &mcp.Tool{Name: "list_reservations", Description: "List current port reservations, marking expired ones."}, listHandler(st))

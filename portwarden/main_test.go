@@ -19,6 +19,7 @@ func testStore(t *testing.T) *store.Store {
 		DefaultTTL: time.Hour,
 		Now:        time.Now,
 		PIDAlive:   func(int) bool { return true },
+		PortFree:   func(int) bool { return true },
 	})
 }
 
@@ -47,6 +48,7 @@ func TestListHandlerMarksExpired(t *testing.T) {
 		DefaultTTL: time.Hour,
 		Now:        func() time.Time { return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC) },
 		PIDAlive:   func(int) bool { return true },
+		PortFree:   func(int) bool { return true },
 	})
 	if _, err := st.Reserve(store.ReserveRequest{Owner: "a", Purpose: "x", Port: 20000}); err != nil {
 		t.Fatal(err)
