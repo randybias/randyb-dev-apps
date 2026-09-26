@@ -1293,6 +1293,8 @@ git commit -m "feat(portwarden): wire MCP server, tool handlers, and docs"
 
 Rationale: the repo is private, so a build-from-source installer (Go is present on dev boxes) over SSH/`gh` avoids release-artifact and token-gated-raw-URL friction. Prebuilt release binaries are a possible later enhancement, out of scope here.
 
+> Update 2026-09-26: the repo is now public. The installer falls back to an anonymous HTTPS clone and the README bootstraps from raw.githubusercontent.com; the SSH/`gh` wording in this plan is historical.
+
 - [ ] **Step 1: Write the installer**
 
 Create `portwarden/install.sh`:
