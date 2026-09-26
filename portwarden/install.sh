@@ -46,14 +46,14 @@ install_bin() {
 register_mcp() {
   if command -v claude >/dev/null 2>&1; then
     log "registering ${APP} MCP server (user scope)"
+    if claude mcp get "${APP}" >/dev/null 2>&1; then
+      log "${APP} MCP server already registered"
+      return
+    fi
     local out
     if ! out="$(claude mcp add "${APP}" --scope user -- "${BIN_DIR}/${APP}" 2>&1)"; then
-      if printf '%s' "${out}" | grep -qi 'already exists'; then
-        log "${APP} MCP server already registered"
-      else
-        log "warning: claude mcp add failed: ${out}"
-        log "register manually: claude mcp add ${APP} --scope user -- ${BIN_DIR}/${APP}"
-      fi
+      log "warning: claude mcp add failed: ${out}"
+      log "register manually: claude mcp add ${APP} --scope user -- ${BIN_DIR}/${APP}"
     fi
   else
     log "claude CLI not found; register manually: claude mcp add ${APP} --scope user -- ${BIN_DIR}/${APP}"

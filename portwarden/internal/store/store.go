@@ -204,20 +204,20 @@ func saveState(path string, st *state) error {
 		os.Remove(tmpName)
 		return fmt.Errorf("rename temp: %w", err)
 	}
-	return syncDir(dir)
+	syncDir(dir)
+	return nil
 }
 
-// syncDir makes a rename within dir durable.
-func syncDir(dir string) error {
+// syncDir makes a rename within dir durable. Best-effort: the rename has
+// already committed the new ledger, and some filesystems reject a directory
+// fsync, so a failure here must not report the save as failed.
+func syncDir(dir string) {
 	d, err := os.Open(dir)
 	if err != nil {
-		return fmt.Errorf("open state dir: %w", err)
+		return
 	}
-	defer d.Close()
-	if err := d.Sync(); err != nil {
-		return fmt.Errorf("sync state dir: %w", err)
-	}
-	return nil
+	d.Sync()
+	d.Close()
 }
 
 // ReserveRequest describes a reservation. Port 0 means auto-allocate; TTL 0
