@@ -15,10 +15,9 @@ From a local checkout:
 
     bash portwarden/install.sh
 
-Remote bootstrap (private repo — uses your gh auth):
+Remote bootstrap:
 
-    gh api repos/randybias/randyb-dev-apps/contents/portwarden/install.sh \
-      -H "Accept: application/vnd.github.raw" | bash
+    curl -fsSL https://raw.githubusercontent.com/randybias/randyb-dev-apps/main/portwarden/install.sh | bash
 
 The installer clones/updates the repo to `~/.local/share/randyb-dev-apps`,
 builds, installs `portwarden` to `~/.local/bin`, and registers it as a
@@ -26,7 +25,7 @@ user-scope MCP server. Override with `PORTWARDEN_SRC_DIR` / `PORTWARDEN_BIN_DIR`
 
 ## Register as an MCP server (Claude Code)
 
-    claude mcp add portwarden -- /absolute/path/to/randyb-dev-apps/bin/portwarden
+    claude mcp add portwarden --scope user -- /absolute/path/to/randyb-dev-apps/bin/portwarden
 
 Or add to your MCP config:
 
@@ -42,7 +41,7 @@ Or add to your MCP config:
 
 | Tool | Args | Purpose |
 |------|------|---------|
-| `reserve_port` | `owner`, `purpose`, `port?`, `ttl_seconds?`, `pid?` | Reserve a specific or auto-allocated port. |
+| `reserve_port` | `owner`, `purpose`, `port?`, `ttl_seconds?`, `pid?`, `force?` | Reserve a specific or auto-allocated port. Auto-allocation skips ports a process is already bound to; a requested port that is bound is rejected unless `force` is set. |
 | `renew_port` | `port`, `ttl_seconds?` | Extend a lease (heartbeat). |
 | `release_port` | `port` | Free a reservation. |
 | `list_reservations` | `owner?` | List reservations, marking expired ones. |
@@ -61,3 +60,7 @@ Or add to your MCP config:
   early if that process dies.
 - Always `renew_port` when (re)starting a long-lived server to keep the lease
   fresh.
+- `force` is for reclaiming a lane whose lease expired while its process kept
+  running. It never overrides another session's active reservation.
+- The bind probe is a snapshot, not a lock: an unreserved process can still
+  take the port before your server binds it, so handle bind failure.

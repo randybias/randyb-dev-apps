@@ -40,7 +40,8 @@ type Config struct {
 
 // Store performs lock-protected reservation operations against the state file.
 type Store struct {
-	cfg Config
+	cfg     Config
+	pathErr error // why the default state path could not be resolved, if it couldn't
 }
 
 const (
@@ -53,9 +54,14 @@ const (
 
 // New returns a Store, filling unset Config fields with defaults (including
 // env-driven port range and the resolved state path).
+// A state path that cannot be resolved is reported by every operation rather
+// than letting the store fall back to the working directory.
 func New(cfg Config) *Store {
+	var pathErr error
 	if cfg.Path == "" {
-		if p, err := StatePath(); err == nil {
+		if p, err := StatePath(); err != nil {
+			pathErr = fmt.Errorf("resolve state path: %w", err)
+		} else {
 			cfg.Path = p
 		}
 	}
@@ -74,7 +80,7 @@ func New(cfg Config) *Store {
 	if cfg.PortFree == nil {
 		cfg.PortFree = portFree
 	}
-	return &Store{cfg: cfg}
+	return &Store{cfg: cfg, pathErr: pathErr}
 }
 
 func (s *Store) now() time.Time { return s.cfg.Now().UTC() }
@@ -163,7 +169,9 @@ func loadState(path string) (*state, error) {
 	return &st, nil
 }
 
-// saveState writes atomically: temp file in the same dir, then rename.
+// saveState writes atomically and durably: temp file in the same dir, fsync,
+// rename, then fsync the dir. Without the syncs a crash can leave a renamed but
+// empty reservations.json, which loadState would read as a fresh ledger.
 func saveState(path string, st *state) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -183,6 +191,11 @@ func saveState(path string, st *state) error {
 		os.Remove(tmpName)
 		return fmt.Errorf("write temp: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("sync temp: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("close temp: %w", err)
@@ -190,6 +203,19 @@ func saveState(path string, st *state) error {
 	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("rename temp: %w", err)
+	}
+	return syncDir(dir)
+}
+
+// syncDir makes a rename within dir durable.
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("open state dir: %w", err)
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return fmt.Errorf("sync state dir: %w", err)
 	}
 	return nil
 }
@@ -365,6 +391,9 @@ func sweep(st *state, now time.Time, alive func(int) bool) []Reservation {
 // withLock acquires an advisory lock around a load -> fn -> (conditional) save
 // cycle. exclusive=false takes a shared lock and never saves.
 func (s *Store) withLock(exclusive bool, fn func(st *state) (changed bool, err error)) error {
+	if s.pathErr != nil {
+		return s.pathErr
+	}
 	if err := os.MkdirAll(filepath.Dir(s.cfg.Path), 0o755); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}

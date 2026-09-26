@@ -1,7 +1,9 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,5 +51,21 @@ func TestPortRangeFromEnv(t *testing.T) {
 	low, high = PortRangeFromEnv(20000, 29999)
 	if low != 20000 || high != 29999 {
 		t.Fatalf("PortRangeFromEnv() fallback = %d-%d, want 20000-29999", low, high)
+	}
+}
+
+func TestUnresolvedStatePathFailsOperations(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("HOME", "")
+	t.Chdir(t.TempDir())
+	s := New(Config{PIDAlive: func(int) bool { return true }, PortFree: func(int) bool { return true }})
+	if _, err := s.List(""); err == nil || !strings.Contains(err.Error(), "state path") {
+		t.Fatalf("List with no resolvable state path: err = %v, want a state path error", err)
+	}
+	if _, err := s.Reserve(ReserveRequest{Owner: "a"}); err == nil || !strings.Contains(err.Error(), "state path") {
+		t.Fatalf("Reserve with no resolvable state path: err = %v, want a state path error", err)
+	}
+	if _, err := os.Stat(".lock"); !os.IsNotExist(err) {
+		t.Fatalf("a lock file was created in the working directory (stat err = %v)", err)
 	}
 }
