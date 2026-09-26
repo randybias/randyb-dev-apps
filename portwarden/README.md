@@ -1,13 +1,22 @@
 # portwarden
 
-A tiny MCP server that lets concurrent agentic coding sessions reserve local
-TCP ports without colliding. Reservations are leases (default 30 days) held in
-a shared, lock-protected JSON file; stale leases are reaped lazily on every
-mutating call.
+MCP server that lets concurrent agentic coding sessions reserve local TCP
+ports without colliding. Reservations are leases (default 30 days) held in a
+shared, `flock`-protected JSON file that every portwarden instance on the box
+reads and writes, so sessions in different MCP clients see each other's
+reservations. Stale leases are swept on every mutating call.
+
+## Requirements
+
+Go 1.25+, make, macOS or Linux (uses `flock(2)` and `kill(pid, 0)`).
 
 ## Build
 
-    make build        # -> bin/portwarden
+From the repo root:
+
+    make build APP=portwarden   # -> bin/portwarden
+    make test APP=portwarden
+    make APP=portwarden         # fmt, vet, test, build
 
 ## Install (any dev box)
 
@@ -37,6 +46,8 @@ Or add to your MCP config:
       }
     }
 
+Other MCP clients: run `portwarden` as a stdio server with no arguments.
+
 ## Tools
 
 | Tool | Args | Purpose |
@@ -45,17 +56,20 @@ Or add to your MCP config:
 | `renew_port` | `port`, `ttl_seconds?` | Extend a lease (heartbeat). |
 | `release_port` | `port` | Free a reservation. |
 | `list_reservations` | `owner?` | List reservations, marking expired ones. |
-| `reap` | — | Reclaim expired / dead-PID reservations now. |
+| `reap` | — | Reclaim expired / dead-PID reservations now; returns what was removed. |
 
 ## Configuration
 
 | Env var | Default | Meaning |
 |---------|---------|---------|
-| `PORTWARDEN_PORT_RANGE` | `20000-29999` | Managed auto-allocation range. |
+| `PORTWARDEN_PORT_RANGE` | `20000-29999` | Managed auto-allocation range, `low-high`. Malformed values fall back to the default. |
 | `XDG_STATE_HOME` | `~/.local/state` | Base dir for `portwarden/reservations.json`. |
 
 ## Notes
 
+- Reserve before binding and never hardcode a port. Release on teardown.
+- A port is free when it is unreserved in the ledger and bindable right now:
+  the allocator test-binds `0.0.0.0`, `127.0.0.1`, `[::]`, and `[::1]`.
 - Pass `pid` when you know the server process PID so the lane is reclaimed
   early if that process dies.
 - Always `renew_port` when (re)starting a long-lived server to keep the lease
